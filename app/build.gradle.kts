@@ -8,16 +8,17 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.surveillance.app"
+        applicationId = "com.quicknotes.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "3.0"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
