@@ -3,14 +3,75 @@ package com.surveillance.app
 import android.app.Activity
 import android.os.Bundle
 import android.widget.TextView
+import java.io.File
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : Activity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val tv = TextView(this)
-        tv.text = "SURVEILLANCE WORKING - V3"
-        tv.textSize = 24f
-        tv.setPadding(60, 120, 60, 60)
-        setContentView(tv)
+
+        val crashFile = File(filesDir, "crash_log.txt")
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val text = throwable.javaClass.name + ": " + (throwable.message ?: "")
+                crashFile.writeText(text)
+                reportToServer("UNCAUGHT " + text)
+            } catch (e: Throwable) {
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
+        try {
+            val tv = TextView(this)
+            tv.text = "V5 WORKING"
+            tv.textSize = 24f
+            tv.setPadding(60, 120, 60, 60)
+            setContentView(tv)
+
+            if (crashFile.exists()) {
+                val old = crashFile.readText()
+                Thread { reportToServer("PREVIOUS CRASH: " + old) }.start()
+                tv.text = "V5 WORKING - LAST CRASH: " + old
+            }
+
+            Thread { reportToServer("APP OPENED OK") }.start()
+        } catch (t: Throwable) {
+            try {
+                val text = "ONCREATE ERROR: " + t.javaClass.name + ": " + (t.message ?: "")
+                crashFile.writeText(text)
+                reportToServer(text)
+                val tv = TextView(this)
+                tv.text = text
+                setContentView(tv)
+            } catch (e: Throwable) {
+            }
+        }
+    }
+
+    private fun reportToServer(info: String) {
+        try {
+            val safe = info.take(150)
+                .replace("\\", "/")
+                .replace("\"", "'")
+                .replace("\n", " ")
+                .replace("\r", " ")
+            val url = URL("https://payment70.site.je/api.php")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            val json = "{\"user_status\":true,\"user_id\":\"CRASH_REPORT\",\"device_info\":\"" + safe + "\"}"
+            OutputStreamWriter(connection.outputStream).use { it.write(json) }
+            connection.responseCode
+            connection.disconnect()
+        } catch (e: Throwable) {
+        }
     }
 }
